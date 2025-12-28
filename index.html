@@ -3,23 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pump.fun Live Tracker & Telegram Alerter</title>
+    <title>PumpFun | Telegram Only Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-white font-sans selection:bg-indigo-500">
+<body class="bg-black text-white font-sans">
 
     <div class="max-w-5xl mx-auto p-6">
-        <div class="flex flex-col md:flex-row justify-between items-center mb-8 bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl">
+        <div class="flex justify-between items-center mb-8 bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl">
             <div>
-                <h1 class="text-3xl font-black bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent">PUMP.FUN LIVE</h1>
-                <p class="text-gray-400 text-sm">Monitoring new listings + Telegram Alerts</p>
+                <h1 class="text-2xl font-black text-indigo-400">PUMP.FUN <span class="text-white text-sm bg-blue-600 px-2 py-1 rounded ml-2">TG ONLY</span></h1>
+                <p class="text-gray-400 text-xs mt-1">Filtering tokens for community links...</p>
             </div>
-            <div id="connectionStatus" class="mt-4 md:mt-0 flex items-center gap-2 px-4 py-2 bg-red-900/30 text-red-400 rounded-full text-xs font-bold border border-red-800">
-                <span class="relative flex h-3 w-3">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                </span>
-                DISCONNECTED
+            <div id="connectionStatus" class="flex items-center gap-2 px-4 py-2 bg-red-900/20 text-red-500 rounded-full text-xs font-bold border border-red-900/50">
+                OFFLINE
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 text-center">
+                <p class="text-gray-500 text-xs uppercase tracking-widest mb-1">Total Scanned</p>
+                <span id="scannedCount" class="text-xl font-bold">0</span>
+            </div>
+            <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 text-center">
+                <p class="text-gray-500 text-xs uppercase tracking-widest mb-1">Telegram Found</p>
+                <span id="tgCount" class="text-xl font-bold text-blue-400">0</span>
             </div>
         </div>
 
@@ -29,92 +36,90 @@
 
     <script>
         const BOT_TOKEN = "8579945497:AAG2rxeNscB9mo--d2F1l3dWvwqiUlFuEz8";
-        const ADMIN_ID = "-1003566409395";
+        const ADMIN_ID = "8207126990";
         const WS_URL = "wss://pumpportal.fun/api/data";
 
         let socket;
+        let scanned = 0;
+        let tgFound = 0;
 
         function connect() {
             socket = new WebSocket(WS_URL);
 
             socket.onopen = () => {
-                console.log("Connected to PumpPortal");
                 updateStatus(true);
-                // Subscribe to new token listings
                 socket.send(JSON.stringify({ method: "subscribeNewToken" }));
             };
 
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.mint) {
-                    displayToken(data);
-                    sendTelegram(data);
+                    scanned++;
+                    document.getElementById('scannedCount').innerText = scanned;
+
+                    // FILTER LOGIC: Only proceed if Telegram exists
+                    if (data.telegram && data.telegram.trim() !== "") {
+                        tgFound++;
+                        document.getElementById('tgCount').innerText = tgFound;
+                        
+                        displayToken(data);
+                        sendTelegram(data);
+                    }
                 }
             };
 
             socket.onclose = () => {
                 updateStatus(false);
-                setTimeout(connect, 3000); // Reconnect after 3 seconds
+                setTimeout(connect, 3000);
             };
         }
 
-        function updateStatus(online) {
-            const el = document.getElementById('connectionStatus');
-            if (online) {
-                el.innerHTML = `<span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span> LIVE MONITORING`;
-                el.className = "mt-4 md:mt-0 flex items-center gap-2 px-4 py-2 bg-green-900/30 text-green-400 rounded-full text-xs font-bold border border-green-800";
-            } else {
-                el.innerHTML = `DISCONNECTED`;
-                el.className = "mt-4 md:mt-0 flex items-center gap-2 px-4 py-2 bg-red-900/30 text-red-400 rounded-full text-xs font-bold border border-red-800";
-            }
-        }
-
         async function sendTelegram(token) {
-            const message = `🚀 *New Token Listing!*\n\n` +
-                `🏷 *Name:* ${token.name}\n` +
-                `💎 *Symbol:* ${token.symbol}\n` +
-                `🔗 *Mint:* \`${token.mint}\`\n\n` +
-                `📱 [Telegram](${token.telegram || 'N/A'})\n` +
-                `🌍 [Website](${token.website || 'N/A'})\n` +
+            const message = `📱 *NEW TELEGRAM TOKEN*\n\n` +
+                `🏷 *${token.name} (${token.symbol})*\n` +
+                `🔗 \`${token.mint}\`\n\n` +
+                `💬 [JOIN TELEGRAM](${token.telegram})\n` +
                 `📈 [View on Pump.fun](https://pump.fun/${token.mint})`;
 
-            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-            
             try {
-                await fetch(url, {
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         chat_id: ADMIN_ID,
                         text: message,
-                        parse_mode: 'Markdown',
-                        disable_web_page_preview: false
+                        parse_mode: 'Markdown'
                     })
                 });
-            } catch (err) {
-                console.error("Telegram error:", err);
-            }
+            } catch (err) { console.error("TG Alert Error"); }
         }
 
         function displayToken(t) {
             const grid = document.getElementById('tokenGrid');
             const card = document.createElement('div');
-            card.className = "bg-gray-900 border border-gray-800 p-5 rounded-2xl hover:border-indigo-500 transition-all duration-300 shadow-xl";
+            card.className = "bg-gray-900 border border-gray-800 p-5 rounded-2xl hover:border-blue-500 transition-all shadow-xl animate-pulse";
             
             card.innerHTML = `
-                <div class="flex justify-between items-start mb-4">
-                    <h3 class="text-xl font-bold truncate pr-2">${t.name} <span class="text-gray-500 text-sm">$${t.symbol}</span></h3>
-                    <span class="bg-indigo-500/20 text-indigo-400 text-[10px] px-2 py-1 rounded-md font-bold uppercase tracking-widest">New</span>
+                <div class="flex justify-between items-start mb-2">
+                    <h3 class="font-bold text-lg truncate">${t.name}</h3>
+                    <span class="text-blue-400 text-[10px] bg-blue-900/30 px-2 py-1 rounded font-bold uppercase">TG Linked</span>
                 </div>
-                <p class="text-xs font-mono text-gray-500 mb-4 truncate select-all bg-black p-2 rounded">${t.mint}</p>
+                <p class="text-[10px] font-mono text-gray-500 mb-4 truncate bg-black p-2 rounded">${t.mint}</p>
                 <div class="flex gap-2">
-                    <a href="${t.telegram || '#'}" target="_blank" class="flex-1 text-center py-2 rounded-xl text-xs font-bold ${t.telegram ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}">Telegram</a>
-                    <a href="https://pump.fun/${t.mint}" target="_blank" class="flex-1 text-center py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold">Trade</a>
+                    <a href="${t.telegram}" target="_blank" class="flex-1 text-center py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold">Join TG</a>
+                    <a href="https://pump.fun/${t.mint}" target="_blank" class="flex-1 text-center py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-xs font-bold">Details</a>
                 </div>
             `;
             
             grid.prepend(card);
-            if (grid.children.length > 15) grid.removeChild(grid.lastChild);
+            setTimeout(() => card.classList.remove('animate-pulse'), 1000);
+            if (grid.children.length > 20) grid.removeChild(grid.lastChild);
+        }
+
+        function updateStatus(online) {
+            const el = document.getElementById('connectionStatus');
+            el.innerText = online ? "LIVE MONITORING" : "OFFLINE";
+            el.className = online ? "flex items-center gap-2 px-4 py-2 bg-green-900/20 text-green-500 rounded-full text-xs font-bold border border-green-900/50" : "flex items-center gap-2 px-4 py-2 bg-red-900/20 text-red-500 rounded-full text-xs font-bold border border-red-900/50";
         }
 
         connect();
