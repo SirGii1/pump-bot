@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pump.fun Live Tracker & Telegram Alerter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-black text-white font-sans selection:bg-indigo-500">
+
+    <div class="max-w-5xl mx-auto p-6">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-8 bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl">
+            <div>
+                <h1 class="text-3xl font-black bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent">PUMP.FUN LIVE</h1>
+                <p class="text-gray-400 text-sm">Monitoring new listings + Telegram Alerts</p>
+            </div>
+            <div id="connectionStatus" class="mt-4 md:mt-0 flex items-center gap-2 px-4 py-2 bg-red-900/30 text-red-400 rounded-full text-xs font-bold border border-red-800">
+                <span class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
+                DISCONNECTED
+            </div>
+        </div>
+
+        <div id="tokenGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            </div>
+    </div>
+
+    <script>
+        const BOT_TOKEN = "8579945497:AAG2rxeNscB9mo--d2F1l3dWvwqiUlFuEz8";
+        const ADMIN_ID = "-1003566409395";
+        const WS_URL = "wss://pumpportal.fun/api/data";
+
+        let socket;
+
+        function connect() {
+            socket = new WebSocket(WS_URL);
+
+            socket.onopen = () => {
+                console.log("Connected to PumpPortal");
+                updateStatus(true);
+                // Subscribe to new token listings
+                socket.send(JSON.stringify({ method: "subscribeNewToken" }));
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.mint) {
+                    displayToken(data);
+                    sendTelegram(data);
+                }
+            };
+
+            socket.onclose = () => {
+                updateStatus(false);
+                setTimeout(connect, 3000); // Reconnect after 3 seconds
+            };
+        }
+
+        function updateStatus(online) {
+            const el = document.getElementById('connectionStatus');
+            if (online) {
+                el.innerHTML = `<span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span> LIVE MONITORING`;
+                el.className = "mt-4 md:mt-0 flex items-center gap-2 px-4 py-2 bg-green-900/30 text-green-400 rounded-full text-xs font-bold border border-green-800";
+            } else {
+                el.innerHTML = `DISCONNECTED`;
+                el.className = "mt-4 md:mt-0 flex items-center gap-2 px-4 py-2 bg-red-900/30 text-red-400 rounded-full text-xs font-bold border border-red-800";
+            }
+        }
+
+        async function sendTelegram(token) {
+            const message = `🚀 *New Token Listing!*\n\n` +
+                `🏷 *Name:* ${token.name}\n` +
+                `💎 *Symbol:* ${token.symbol}\n` +
+                `🔗 *Mint:* \`${token.mint}\`\n\n` +
+                `📱 [Telegram](${token.telegram || 'N/A'})\n` +
+                `🌍 [Website](${token.website || 'N/A'})\n` +
+                `📈 [View on Pump.fun](https://pump.fun/${token.mint})`;
+
+            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+            
+            try {
+                await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: ADMIN_ID,
+                        text: message,
+                        parse_mode: 'Markdown',
+                        disable_web_page_preview: false
+                    })
+                });
+            } catch (err) {
+                console.error("Telegram error:", err);
+            }
+        }
+
+        function displayToken(t) {
+            const grid = document.getElementById('tokenGrid');
+            const card = document.createElement('div');
+            card.className = "bg-gray-900 border border-gray-800 p-5 rounded-2xl hover:border-indigo-500 transition-all duration-300 shadow-xl";
+            
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-xl font-bold truncate pr-2">${t.name} <span class="text-gray-500 text-sm">$${t.symbol}</span></h3>
+                    <span class="bg-indigo-500/20 text-indigo-400 text-[10px] px-2 py-1 rounded-md font-bold uppercase tracking-widest">New</span>
+                </div>
+                <p class="text-xs font-mono text-gray-500 mb-4 truncate select-all bg-black p-2 rounded">${t.mint}</p>
+                <div class="flex gap-2">
+                    <a href="${t.telegram || '#'}" target="_blank" class="flex-1 text-center py-2 rounded-xl text-xs font-bold ${t.telegram ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}">Telegram</a>
+                    <a href="https://pump.fun/${t.mint}" target="_blank" class="flex-1 text-center py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold">Trade</a>
+                </div>
+            `;
+            
+            grid.prepend(card);
+            if (grid.children.length > 15) grid.removeChild(grid.lastChild);
+        }
+
+        connect();
+    </script>
+</body>
+</html>
