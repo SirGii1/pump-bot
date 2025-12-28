@@ -3,126 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PumpFun | Telegram Only Tracker</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Pro Pump Monitor</title>
+    <style>
+        /* Modern Dark Trading Terminal Style */
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #e6edf3; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .header { width: 100%; background: #161b22; padding: 20px; text-align: center; border-bottom: 1px solid #30363d; box-shadow: 0 4px 12px rgba(0,0,0,0.5); position: sticky; top: 0; z-index: 100; }
+        .header h2 { margin: 0; color: #58a6ff; font-size: 24px; letter-spacing: 1px; }
+        .status-badge { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; background: #238636; color: white; border: 1px solid rgba(255,255,255,0.2); }
+        
+        .feed-container { width: 90%; max-width: 600px; margin-top: 20px; padding-bottom: 50px; }
+        
+        /* Token Card Styling */
+        .token-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s; }
+        .token-card:hover { transform: translateY(-2px); border-color: #58a6ff; }
+        
+        .token-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .token-title { font-size: 18px; font-weight: bold; color: #fff; }
+        .token-symbol { color: #8b949e; font-size: 14px; margin-left: 5px; }
+        
+        .ca-container { background: #0d1117; padding: 10px; border-radius: 6px; border: 1px dashed #30363d; font-family: 'Courier New', monospace; font-size: 13px; color: #a5d6ff; word-break: break-all; margin: 10px 0; user-select: all; cursor: pointer; }
+        
+        .action-buttons { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+        .btn { flex: 1; text-align: center; padding: 10px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600; min-width: 80px; }
+        .btn-pump { background: #1db954; color: black; } /* Green for Buy */
+        .btn-tg { background: #2481cc; color: white; }
+        .btn-x { background: #000; color: white; border: 1px solid #333; }
+        .btn-web { background: #30363d; color: white; }
+    </style>
 </head>
-<body class="bg-black text-white font-sans">
+<body>
 
-    <div class="max-w-5xl mx-auto p-6">
-        <div class="flex justify-between items-center mb-8 bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl">
-            <div>
-                <h1 class="text-2xl font-black text-indigo-400">PUMP.FUN <span class="text-white text-sm bg-blue-600 px-2 py-1 rounded ml-2">TG ONLY</span></h1>
-                <p class="text-gray-400 text-xs mt-1">Filtering tokens for community links...</p>
-            </div>
-            <div id="connectionStatus" class="flex items-center gap-2 px-4 py-2 bg-red-900/20 text-red-500 rounded-full text-xs font-bold border border-red-900/50">
-                OFFLINE
-            </div>
-        </div>
+<div class="header">
+    <h2>🚀 Pump.fun Monitor</h2>
+    <div id="status" class="status-badge">Initializing...</div>
+</div>
 
-        <div class="grid grid-cols-2 gap-4 mb-6">
-            <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 text-center">
-                <p class="text-gray-500 text-xs uppercase tracking-widest mb-1">Total Scanned</p>
-                <span id="scannedCount" class="text-xl font-bold">0</span>
-            </div>
-            <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 text-center">
-                <p class="text-gray-500 text-xs uppercase tracking-widest mb-1">Telegram Found</p>
-                <span id="tgCount" class="text-xl font-bold text-blue-400">0</span>
-            </div>
-        </div>
-
-        <div id="tokenGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            </div>
+<div class="feed-container" id="feed">
     </div>
 
-    <script>
-        const BOT_TOKEN = "8579945497:AAG2rxeNscB9mo--d2F1l3dWvwqiUlFuEz8";
-        const ADMIN_ID = "8207126990";
-        const WS_URL = "wss://pumpportal.fun/api/data";
+<script>
+    const BOT_TOKEN = "8579945497:AAG2rxeNscB9mo--d2F1l3dWvwqiUlFuEz8";
+    const CHAT_ID = "-1003566409395";
 
-        let socket;
-        let scanned = 0;
-        let tgFound = 0;
+    const ws = new WebSocket('wss://pumpportal.fun/api/data');
+    const statusDiv = document.getElementById('status');
+    const feed = document.getElementById('feed');
 
-        function connect() {
-            socket = new WebSocket(WS_URL);
+    ws.onopen = () => {
+        statusDiv.innerText = "🟢 System Online & Tracking";
+        ws.send(JSON.stringify({ method: "subscribeNewToken" }));
+    };
 
-            socket.onopen = () => {
-                updateStatus(true);
-                socket.send(JSON.stringify({ method: "subscribeNewToken" }));
-            };
-
-            socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.mint) {
-                    scanned++;
-                    document.getElementById('scannedCount').innerText = scanned;
-
-                    // FILTER LOGIC: Only proceed if Telegram exists
-                    if (data.telegram && data.telegram.trim() !== "") {
-                        tgFound++;
-                        document.getElementById('tgCount').innerText = tgFound;
-                        
-                        displayToken(data);
-                        sendTelegram(data);
-                    }
-                }
-            };
-
-            socket.onclose = () => {
-                updateStatus(false);
-                setTimeout(connect, 3000);
-            };
+    ws.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        if (data.txType === "create") {
+            processToken(data);
         }
+    };
 
-        async function sendTelegram(token) {
-            const message = `📱 *NEW TELEGRAM TOKEN*\n\n` +
-                `🏷 *${token.name} (${token.symbol})*\n` +
-                `🔗 \`${token.mint}\`\n\n` +
-                `💬 [JOIN TELEGRAM](${token.telegram})\n` +
-                `📈 [View on Pump.fun](https://pump.fun/${token.mint})`;
+    async function processToken(token) {
+        const mint = token.mint;
+        const name = token.name || "Unknown";
+        const symbol = token.symbol || "TOKEN";
+        
+        // 1. Fetch Metadata (Socials)
+        let twitter = token.twitter || "";
+        let telegram = token.telegram || "";
+        let website = token.website || "";
 
+        if (!twitter && !telegram && token.uri) {
             try {
-                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: ADMIN_ID,
-                        text: message,
-                        parse_mode: 'Markdown'
-                    })
-                });
-            } catch (err) { console.error("TG Alert Error"); }
+                const metaReq = await fetch(token.uri);
+                const meta = await metaReq.json();
+                twitter = meta.twitter || twitter;
+                telegram = meta.telegram || telegram;
+                website = meta.website || website;
+            } catch (e) { console.log("Meta fetch error"); }
         }
 
-        function displayToken(t) {
-            const grid = document.getElementById('tokenGrid');
-            const card = document.createElement('div');
-            card.className = "bg-gray-900 border border-gray-800 p-5 rounded-2xl hover:border-blue-500 transition-all shadow-xl animate-pulse";
+        const pumpLink = `https://pump.fun/${mint}`;
+        const solscanLink = `https://solscan.io/token/${mint}`;
+
+        // 2. Add to Website Dashboard (ALL TOKENS shown here)
+        const card = document.createElement('div');
+        card.className = 'token-card';
+        card.innerHTML = `
+            <div class="token-header">
+                <div><span class="token-title">${name}</span> <span class="token-symbol">($${symbol})</span></div>
+            </div>
+            <div class="ca-container" onclick="navigator.clipboard.writeText('${mint}')" title="Click to Copy">${mint}</div>
+            <div class="action-buttons">
+                <a href="${pumpLink}" target="_blank" class="btn btn-pump">💊 Buy</a>
+                ${telegram ? `<a href="${telegram}" target="_blank" class="btn btn-tg">Telegram</a>` : ''}
+                ${twitter ? `<a href="${twitter}" target="_blank" class="btn btn-x">X (Twitter)</a>` : ''}
+                ${website ? `<a href="${website}" target="_blank" class="btn btn-web">Website</a>` : ''}
+            </div>
+        `;
+        feed.prepend(card);
+
+        // 3. TELEGRAM FILTER: Only send if Telegram link exists!
+        if (telegram) {
             
-            card.innerHTML = `
-                <div class="flex justify-between items-start mb-2">
-                    <h3 class="font-bold text-lg truncate">${t.name}</h3>
-                    <span class="text-blue-400 text-[10px] bg-blue-900/30 px-2 py-1 rounded font-bold uppercase">TG Linked</span>
-                </div>
-                <p class="text-[10px] font-mono text-gray-500 mb-4 truncate bg-black p-2 rounded">${t.mint}</p>
-                <div class="flex gap-2">
-                    <a href="${t.telegram}" target="_blank" class="flex-1 text-center py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold">Join TG</a>
-                    <a href="https://pump.fun/${t.mint}" target="_blank" class="flex-1 text-center py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-xs font-bold">Details</a>
-                </div>
-            `;
+            // Build Socials List
+            let linksList = [];
+            linksList.push(`✈️ <a href="${telegram}">Telegram</a>`); // We know TG exists here
+            if (twitter) linksList.push(`🐦 <a href="${twitter}">Twitter</a>`);
+            if (website) linksList.push(`🌐 <a href="${website}">Website</a>`);
             
-            grid.prepend(card);
-            setTimeout(() => card.classList.remove('animate-pulse'), 1000);
-            if (grid.children.length > 20) grid.removeChild(grid.lastChild);
-        }
+            const socialSection = `\n\n<b>Socials:</b>\n${linksList.join('  |  ')}`;
 
-        function updateStatus(online) {
-            const el = document.getElementById('connectionStatus');
-            el.innerText = online ? "LIVE MONITORING" : "OFFLINE";
-            el.className = online ? "flex items-center gap-2 px-4 py-2 bg-green-900/20 text-green-500 rounded-full text-xs font-bold border border-green-900/50" : "flex items-center gap-2 px-4 py-2 bg-red-900/20 text-red-500 rounded-full text-xs font-bold border border-red-900/50";
-        }
+            const message = `🟢 <b>NEW PUMP.FUN TOKEN FOUND</b>\n` +
+                            `---------------------------------\n` +
+                            `💎 <b>${name}</b> ($${symbol})\n` +
+                            `---------------------------------\n` +
+                            `📋 <b>CA:</b> (Tap to copy)\n` +
+                            `<code>${mint}</code>` + 
+                            `${socialSection}\n\n` +
+                            `💊 <a href="${pumpLink}"><b>Buy on Pump.fun</b></a>\n` +
+                            `🔍 <a href="${solscanLink}">Scan on Solscan</a>`;
 
-        connect();
-    </script>
+            fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: CHAT_ID,
+                    text: message,
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true
+                })
+            });
+        }
+    }
+</script>
+
 </body>
 </html>
